@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Env & secrets — NUNCA commitar chaves reais
+jev_conversacional/.env
+.env
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Logs & dumps
+*.log
+conversation-*.txt
+trajectory-*.json
+agents_log/
+
+# OS
+.DS_Store

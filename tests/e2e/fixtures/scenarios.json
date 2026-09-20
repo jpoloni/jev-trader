@@ -1,0 +1,17 @@
+[
+  {"id": "saudacao", "input": "oi", "expect": {"call_jev": false, "recomendacao": null}},
+  {"id": "petr4_swing_hold", "input": "vale comprar PETR4 pra swing?", "ticker": "PETR4", "expect": {"call_jev": true, "recomendacao": "hold", "has_disclaimer": true, "has_fontes": true}},
+  {"id": "vale3_venda", "input": "devo vender VALE3?", "ticker": "VALE3", "mock_override": {"tendencia_tecnica": {"score": 0.5}, "recomendacao": {"choice": "venda", "confidence": 0.7, "probabilities": {"compra": 0.1, "venda": 0.6, "hold": 0.3}}}, "expect": {"call_jev": true}},
+  {"id": "ticker_invalido", "input": "vale comprar XYZ?", "ticker": "XYZ", "expect": {"call_jev": false, "error_contains": "Ticker inválido"}},
+  {"id": "followup_15pct", "input_seq": ["tenho PETR4 8% carteira, perfil moderado, swing", "e se eu aumentar pra 15% da carteira?"], "expect": {"call_jev": true, "second_gate": "risco_excessivo"}},
+  {"id": "web_search_petr4", "input": "PETR4 notícias últimos 7 dias?", "expect": {"uses_google_search": true}},
+  {"id": "web_search_brent", "input": "como está o Brent hoje e PETR4?", "expect": {"uses_google_search": true}},
+  {"id": "web_search_copom", "input": "PETR4 com Copom em 2 dias, compro?", "ticker": "PETR4", "expect": {"call_jev": true}},
+  {"id": "gate_confidence_baixa", "mock_override": {"recomendacao": {"choice": "compra", "confidence": 0.45, "probabilities": {"compra": 0.5, "venda": 0.1, "hold": 0.4}}}, "expect": {"recomendacao": "hold", "motivo_contains": "confidence"}},
+  {"id": "gate_risco_excessivo", "mock_override": {"risco_excessivo": {"noul": 0.85}}, "expect": {"recomendacao": "hold"}},
+  {"id": "gate_info_insuficiente", "mock_override": {"informacao_insuficiente": {"noul": 0.8}}, "expect": {"recomendacao": "hold"}},
+  {"id": "modo_live", "input": "vale comprar PETR4?", "ticker": "PETR4", "live_only": true, "expect": {"model_prefix": "jev-"}},
+  {"id": "interface_runner", "input": "vale comprar PETR4 pra swing?", "surface": "runner", "expect": {"call_jev": true}},
+  {"id": "interface_cli", "input": "vale comprar PETR4?", "surface": "cli", "expect": {"call_jev": true}},
+  {"id": "interface_web", "input": "vale comprar PETR4?", "surface": "web", "expect": {"call_jev": true, "has_disclaimer": true}}
+]

@@ -1,0 +1,15 @@
+# Pesos composite scoring — versionado, ajuste sem tocar prompt
+weights:
+  tendencia: 0.30
+  fundamentos: 0.25
+  sentimento: 0.15
+  timing_inv: 0.15
+  risco_inv: 0.15
+thresholds:
+  compra: 0.62  # weighted >=
+  venda: 0.38   # weighted <=  (entre vira hold)
+gates:
+  risco_excessivo: 0.70
+  evento_binario_iminente: 0.65
+  informacao_insuficiente: 0.68
+  confidence_min: 0.60

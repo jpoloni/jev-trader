@@ -1,0 +1,23 @@
+{
+  "ticker": "PETR4",
+  "state": {
+    "ativo": {"ticker": "PETR4", "nome": "Petrobras PN", "setor": "Petróleo & Gás", "bolsa": "B3"},
+    "mercado": {"preco_atual": 38.42, "variacao_dia_pct": -1.2, "candles_14d": [], "indicadores": {"rsi_14": 68.2, "volatilidade_20d_pct": 2.8}, "tendencia_descritiva": "Alta 3 pregões"},
+    "fundamentos": {"pl": 4.2, "dy_12m_pct": 12.1},
+    "contexto": {"noticias_7d": ["Reajuste diesel +2%"], "eventos_proximos": ["Copom em 2 dias"], "sentimento_mercado": "Ibov +0.6%"},
+    "posicao_usuario": {"tem_posicao": true, "pct_carteira": 8.5, "perfil_risco": "moderado", "horizonte": "swing"},
+    "restricoes": {"disclaimer": "Educacional CVM"}
+  },
+  "mock_answers": {
+    "tendencia_tecnica": {"score": 3.4},
+    "qualidade_fundamentalista": {"score": 3.0},
+    "risco_volatilidade": {"score": 1.8},
+    "sentimento_noticia": {"score": 3.0},
+    "timing_momentum": {"score": 3.2},
+    "risco_excessivo": {"noul": 0.3},
+    "informacao_insuficiente": {"noul": 0.1},
+    "evento_binario_iminente": {"noul": 0.85},
+    "recomendacao": {"choice": "compra", "confidence": 0.75, "probabilities": {"compra": 0.5, "venda": 0.1, "hold": 0.4}}
+  },
+  "expected": {"recomendacao": "hold", "motivo_gate_contains": "evento_binario"}
+}

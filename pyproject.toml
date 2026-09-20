@@ -1,0 +1,21 @@
+[project]
+name = "jev"
+version = "0.1.0"
+description = "Jev-Trader (Typesafe SystemOne) + Jev Conversacional (Google ADK) - recomendação compra/venda/hold B3"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "google-adk>=1.18.0",
+  "typesafe-sdk>=0.7.0",
+  "yfinance>=0.2.0",
+  "pandas>=2.0.0",
+  "python-dotenv>=1.0.0",
+  "pydantic>=2.0.0",
+]
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests", "jev_trader", "jev_conversacional"]
+markers = ["e2e: testes end-to-end (mock ou live, inclui interface)"]
