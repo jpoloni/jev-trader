@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Jev — CLI Executivo B3 (Google ADK × Typesafe)
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+PYTHON="${DIR}/.venv/bin/python"
+
+if [ ! -f "$PYTHON" ]; then
+  PYTHON="python3"
+fi
+
+exec "$PYTHON" -m jev_conversacional "$@"

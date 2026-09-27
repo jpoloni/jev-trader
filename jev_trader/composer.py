@@ -8,6 +8,25 @@ DEFAULT_WEIGHTS = {"tendencia": 0.30, "fundamentos": 0.25, "sentimento": 0.15, "
 DEFAULT_THRESHOLDS = {"compra": 0.62, "venda": 0.38}
 DEFAULT_GATES = {"risco_excessivo": 0.70, "evento_binario_iminente": 0.65, "informacao_insuficiente": 0.68, "confidence_min": 0.60}
 
+# Perfis por horizonte — ajustam pesos e gates dinamicamente
+HORIZON_PROFILES: dict[str, dict[str, Any]] = {
+    "swing": {
+        "weights": DEFAULT_WEIGHTS,
+        "thresholds": DEFAULT_THRESHOLDS,
+        "gates": DEFAULT_GATES,
+    },
+    "daytrade": {
+        "weights": {"tendencia": 0.35, "fundamentos": 0.10, "sentimento": 0.10, "timing_inv": 0.30, "risco_inv": 0.15},
+        "thresholds": {"compra": 0.58, "venda": 0.35},
+        "gates": {"risco_excessivo": 0.75, "evento_binario_iminente": 0.70, "informacao_insuficiente": 0.92, "confidence_min": 0.30},
+    },
+    "posicional": {
+        "weights": {"tendencia": 0.20, "fundamentos": 0.35, "sentimento": 0.15, "timing_inv": 0.10, "risco_inv": 0.20},
+        "thresholds": {"compra": 0.65, "venda": 0.40},
+        "gates": {"risco_excessivo": 0.65, "evento_binario_iminente": 0.60, "informacao_insuficiente": 0.65, "confidence_min": 0.65},
+    },
+}
+
 def _load_weights() -> tuple[dict, dict, dict]:
     p = pathlib.Path(__file__).with_name("weights.yaml")
     if p.exists():
@@ -15,7 +34,17 @@ def _load_weights() -> tuple[dict, dict, dict]:
         return data.get("weights", DEFAULT_WEIGHTS), data.get("thresholds", DEFAULT_THRESHOLDS), data.get("gates", DEFAULT_GATES)
     return DEFAULT_WEIGHTS, DEFAULT_THRESHOLDS, DEFAULT_GATES
 
+# Carrega swing como default global (retrocompatibilidade)
 WEIGHTS, THRESHOLDS, GATES = _load_weights()
+
+def _get_profile(horizonte: str | None) -> tuple[dict, dict, dict]:
+    """Retorna (weights, thresholds, gates) para o horizonte dado."""
+    h = (horizonte or "swing").strip().lower()
+    if h in HORIZON_PROFILES:
+        p = HORIZON_PROFILES[h]
+        return p["weights"], p["thresholds"], p["gates"]
+    # fallback: swing from yaml/default
+    return WEIGHTS, THRESHOLDS, GATES
 
 def _norm(score: float, levels: int) -> float:
     return max(0.0, min(1.0, score / (levels - 1)))
@@ -28,14 +57,18 @@ def _get(obj: Any, key: str, default=None):
         return obj.get(key, default)
     return getattr(obj, key, default)
 
-def compose(answers: dict[str, Any], ticker: str = "") -> dict[str, Any]:
+def compose(answers: dict[str, Any], ticker: str = "", horizonte: str | None = None) -> dict[str, Any]:
     """
     answers: dict com chaves tendencia_tecnica, qualidade_fundamentalista, risco_volatilidade,
              sentimento_noticia, timing_momentum, risco_excessivo, informacao_insuficiente,
              evento_binario_iminente, recomendacao
     Cada answer pode ser objeto SDK (com .score/.noul/.choice/.confidence/.probabilities) ou dict de teste.
+    horizonte: 'swing'|'daytrade'|'posicional' — ajusta pesos e gates automaticamente.
     Retorna saida tipada.
     """
+    # Seleciona perfil de pesos/gates para o horizonte
+    w, t, g = _get_profile(horizonte)
+
     def score_of(k, levels):
         a = answers.get(k)
         s = _get(a, "score")
@@ -75,30 +108,30 @@ def compose(answers: dict[str, Any], ticker: str = "") -> dict[str, Any]:
     risco_inv = 1.0 - _norm(risco_s, 4)
 
     weighted = (
-        WEIGHTS["tendencia"] * _norm(tend_s, 5)
-        + WEIGHTS["fundamentos"] * _norm(fund_s, 5)
-        + WEIGHTS["sentimento"] * _norm(sent_s, 5)
-        + WEIGHTS["timing_inv"] * timing_buy
-        + WEIGHTS["risco_inv"] * risco_inv
+        w["tendencia"] * _norm(tend_s, 5)
+        + w["fundamentos"] * _norm(fund_s, 5)
+        + w["sentimento"] * _norm(sent_s, 5)
+        + w["timing_inv"] * timing_buy
+        + w["risco_inv"] * risco_inv
     )
 
-    if weighted >= THRESHOLDS["compra"]:
+    if weighted >= t["compra"]:
         raw = "compra"
-    elif weighted <= THRESHOLDS["venda"]:
+    elif weighted <= t["venda"]:
         raw = "venda"
     else:
         raw = "hold"
 
     # Gates soberanos (Confidence-gated routing + Noul)
     motivo_gate = None
-    if risco_excessivo > GATES["risco_excessivo"]:
-        final, motivo_gate = "hold", f"risco_excessivo noul={risco_excessivo:.2f} > {GATES['risco_excessivo']}"
-    elif evento_bin > GATES["evento_binario_iminente"]:
-        final, motivo_gate = "hold", f"evento_binario_iminente noul={evento_bin:.2f} > {GATES['evento_binario_iminente']}"
-    elif info_insuf > GATES["informacao_insuficiente"]:
-        final, motivo_gate = "hold", f"informacao_insuficiente noul={info_insuf:.2f} > {GATES['informacao_insuficiente']}"
-    elif confidence < GATES["confidence_min"]:
-        final, motivo_gate = "hold", f"confidence {confidence:.2f} < {GATES['confidence_min']}"
+    if risco_excessivo > g["risco_excessivo"]:
+        final, motivo_gate = "hold", f"risco_excessivo noul={risco_excessivo:.2f} > {g['risco_excessivo']}"
+    elif evento_bin > g["evento_binario_iminente"]:
+        final, motivo_gate = "hold", f"evento_binario_iminente noul={evento_bin:.2f} > {g['evento_binario_iminente']}"
+    elif info_insuf > g["informacao_insuficiente"]:
+        final, motivo_gate = "hold", f"informacao_insuficiente noul={info_insuf:.2f} > {g['informacao_insuficiente']}"
+    elif confidence < g["confidence_min"]:
+        final, motivo_gate = "hold", f"confidence {confidence:.2f} < {g['confidence_min']}"
     elif choice != raw and confidence > 0.75:
         final, motivo_gate = "hold", f"divergência choice={choice} vs raw={raw} com confidence alto"
     else:

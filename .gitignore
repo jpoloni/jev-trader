@@ -26,3 +26,13 @@ agents_log/
 # OS
 .DS_Store
 jev_conversacional/.adk/
+
+# Scanner & runtime outputs (gerados/locais, não commitar)
+data/ranking-*.json
+data/ranking-*.csv
+data/ranking-*.xlsx
+data/*.xlsx
+data/*.db
+data/portfolio.json
+data/trade_history.json
+data/universe.json
