@@ -4,9 +4,11 @@ import pytest
 pytestmark = pytest.mark.e2e
 
 try:
+    import os
     from playwright.sync_api import sync_playwright
-    HAS_PLAYWRIGHT = True
-except ImportError:
+    with sync_playwright() as _p:
+        HAS_PLAYWRIGHT = os.path.exists(_p.chromium.executable_path)
+except Exception:
     HAS_PLAYWRIGHT = False
 
 @pytest.mark.skipif(not HAS_PLAYWRIGHT, reason="playwright não instalado — rode: uv pip install --python .venv/bin/python pytest-playwright && .venv/bin/playwright install chromium")
