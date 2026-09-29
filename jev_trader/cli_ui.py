@@ -191,9 +191,11 @@ def render_ticker_card(result: dict[str, Any]) -> str:
             return f"{Ansi.BRIGHT_RED}❌ BLOQUEIO ({v:.2f} > limite {lim:.2f}){Ansi.RESET}"
         return f"{Ansi.BRIGHT_GREEN}✓ OK ({v:.2f} <= {lim:.2f}){Ansi.RESET}"
 
-    out.append(f"{Ansi.CYAN}│{Ansi.RESET}    • Risco Excessivo:         {_g_status(g_risco, 0.70)}")
-    out.append(f"{Ansi.CYAN}│{Ansi.RESET}    • Informação Insuficiente: {_g_status(g_info, 0.68)}")
-    out.append(f"{Ansi.CYAN}│{Ansi.RESET}    • Evento Binário Iminente: {_g_status(g_event, 0.65)}")
+    # Limites do perfil de horizonte usado na análise (fallback: swing)
+    lim = {"risco_excessivo": 0.70, "informacao_insuficiente": 0.68, "evento_binario_iminente": 0.65, **(result.get("limites_gates") or {})}
+    out.append(f"{Ansi.CYAN}│{Ansi.RESET}    • Risco Excessivo:         {_g_status(g_risco, lim['risco_excessivo'])}")
+    out.append(f"{Ansi.CYAN}│{Ansi.RESET}    • Informação Insuficiente: {_g_status(g_info, lim['informacao_insuficiente'])}")
+    out.append(f"{Ansi.CYAN}│{Ansi.RESET}    • Evento Binário Iminente: {_g_status(g_event, lim['evento_binario_iminente'])}")
     if motivo_gate:
         out.append(f"{Ansi.CYAN}│{Ansi.RESET}    {Ansi.BOLD}{Ansi.BRIGHT_YELLOW}⚠️  Ação Soberana:{Ansi.RESET} {motivo_gate}")
     else:

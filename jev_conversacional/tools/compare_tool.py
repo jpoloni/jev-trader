@@ -59,6 +59,8 @@ def compare_tickers(
                     "volatilidade": mercado.get("indicadores", {}).get("volatilidade_20d_pct"),
                 },
                 "motivo_gate": res.get("motivo_gate"),
+                "simulado": bool(res.get("simulado")),
+                "cotacao_disponivel": bool(res.get("dados_mercado", {}).get("disponivel")),
             })
         except Exception as e:
             comparativo.append({
@@ -73,10 +75,20 @@ def compare_tickers(
 
     vencedor = validos[0]["ticker"] if validos else None
 
+    simulados = [c["ticker"] for c in validos if c.get("simulado")]
+    aviso = None
+    if simulados:
+        aviso = (
+            "Comparação com análises SIMULADAS (sem TYPESAFE_API_KEY) para " + ", ".join(simulados)
+            + " — não representa análise real; informe isso ao usuário."
+        )
+
     return {
         "horizonte": horizonte or "swing",
         "total_comparados": len(clean_tickers),
         "melhor_ativo": vencedor,
         "comparativo": comparativo,
         "ranking_relativo": [v["ticker"] for v in validos],
+        "simulado": bool(simulados),
+        "aviso": aviso,
     }

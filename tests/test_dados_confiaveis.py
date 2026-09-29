@@ -120,3 +120,24 @@ def test_scan_b3_sinaliza_ranking_simulado(tmp_path, monkeypatch):
     assert out["simulado"] is True
     assert out["ranking"][0]["simulado"] is True
     assert "SIMULADOS" in out["aviso"]
+
+
+def test_mock_varia_por_ticker_e_nao_polui_historico(monkeypatch, md_mod):
+    from jev_conversacional.tools.compare_tool import compare_tickers
+    import jev_conversacional.sqlite_storage as storage
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.setenv("JEV_MARKET_MOCK", "1")
+
+    res = compare_tickers(["PETR4", "VALE3", "ITUB4"])
+    scores = [c["score_ponderado"] for c in res["comparativo"]]
+    assert len(set(scores)) == 3  # sem empate artificial
+    assert res["simulado"] is True and "SIMULADAS" in res["aviso"]
+    assert all(c["simulado"] for c in res["comparativo"])
+    # recomendações simuladas não entram no histórico de acurácia
+    assert storage.get_past_recommendations() == []
+
+
+def test_mock_answers_deterministico():
+    from jev_trader.mock_answers import mock_answers_for_ticker
+    assert mock_answers_for_ticker("PETR4") == mock_answers_for_ticker("petr4")
+    assert mock_answers_for_ticker("PETR4") != mock_answers_for_ticker("VALE3")

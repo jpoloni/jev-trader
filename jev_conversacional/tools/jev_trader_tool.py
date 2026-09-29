@@ -73,28 +73,22 @@ def call_jev_trader(ticker: str, horizonte_override: str | None = None, observac
     if os.getenv("TYPESAFE_API_KEY"):
         res = _call(ticker=ticker, state_override=state)
     else:
-        # mock calibrado (hold com confiança moderada, gate evento_binario)
-        mock_answers: dict[str, Any] = {
-            "tendencia_tecnica": {"score": 3.4},
-            "qualidade_fundamentalista": {"score": 3.0},
-            "risco_volatilidade": {"score": 1.8},
-            "sentimento_noticia": {"score": 2.8},
-            "timing_momentum": {"score": 3.2},
-            "risco_excessivo": {"noul": 0.31},
-            "informacao_insuficiente": {"noul": 0.15},
-            "evento_binario_iminente": {"noul": 0.72},
-            "recomendacao": {"choice": "hold", "confidence": 0.62, "probabilities": {"compra": 0.28, "venda": 0.11, "hold": 0.61}},
-        }
+        # Sem chave: respostas SIMULADAS determinísticas por ticker (model="jev-mock")
+        from jev_trader.mock_answers import mock_answers_for_ticker
+        mock_answers = mock_answers_for_ticker(ticker)
         res = _call(ticker=ticker, state_override=state, mock_answers=mock_answers)
 
     # Deixa explícito ao orquestrador se a análise teve cotação real
+    res["simulado"] = res.get("model") == "jev-mock"
     res["dados_mercado"] = {
         "disponivel": md.get("disponivel", False),
         "simulado": md.get("simulado", False),
         "fonte": md.get("fonte", "indisponivel"),
     }
 
-    # Persiste recomendação no histórico SQLite para tracking de acurácia
+    # Persiste recomendação no histórico SQLite para tracking de acurácia (só análises reais)
+    if res["simulado"]:
+        return res
     try:
         from ..sqlite_storage import log_recommendation
         log_recommendation(

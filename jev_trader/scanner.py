@@ -20,6 +20,7 @@ load_dotenv(pathlib.Path(__file__).parent.parent / "jev_conversacional" / ".env"
 from .universe import load_universe, ALLOWLIST
 from .client import call_jev_trader
 from .state import build_state
+from .mock_answers import mock_answers_for_ticker
 
 
 # Cache dir para persistência
@@ -44,24 +45,8 @@ class ScanResult:
     usage: dict[str, Any]
     timestamp: str
 
-def _mock_answers_for_ticker(ticker: str) -> dict[str, Any]:
-    """Mock determinístico por ticker para testes offline — variação por hash do ticker."""
-    # Hash simples para variar weighted
-    h = sum(ord(c) for c in ticker) % 100
-    #тики com h alto → compra, médio → hold, baixo → venda
-    if h > 70:
-        choice, conf, probs = "compra", 0.72, {"compra": 0.62, "venda": 0.08, "hold": 0.30}
-        scores = {"tendencia_tecnica": {"score": 4.0}, "qualidade_fundamentalista": {"score": 3.8}, "risco_volatilidade": {"score": 1.2}, "sentimento_noticia": {"score": 3.5}, "timing_momentum": {"score": 1.5}}
-        nouls = {"risco_excessivo": {"noul": 0.2}, "informacao_insuficiente": {"noul": 0.1}, "evento_binario_iminente": {"noul": 0.15}}
-    elif h > 45:
-        choice, conf, probs = "hold", 0.62, {"compra": 0.28, "venda": 0.11, "hold": 0.61}
-        scores = {"tendencia_tecnica": {"score": 3.0}, "qualidade_fundamentalista": {"score": 3.0}, "risco_volatilidade": {"score": 1.8}, "sentimento_noticia": {"score": 2.8}, "timing_momentum": {"score": 2.8}}
-        nouls = {"risco_excessivo": {"noul": 0.31}, "informacao_insuficiente": {"noul": 0.15}, "evento_binario_iminente": {"noul": 0.30}}
-    else:
-        choice, conf, probs = "venda", 0.68, {"compra": 0.10, "venda": 0.58, "hold": 0.32}
-        scores = {"tendencia_tecnica": {"score": 1.2}, "qualidade_fundamentalista": {"score": 2.0}, "risco_volatilidade": {"score": 2.5}, "sentimento_noticia": {"score": 1.5}, "timing_momentum": {"score": 4.2}}
-        nouls = {"risco_excessivo": {"noul": 0.35}, "informacao_insuficiente": {"noul": 0.12}, "evento_binario_iminente": {"noul": 0.20}}
-    return {**scores, **nouls, "recomendacao": {"choice": choice, "confidence": conf, "probabilities": probs}}
+# Mantido por compatibilidade (testes/scripts importam daqui)
+_mock_answers_for_ticker = mock_answers_for_ticker
 
 def _prefilter_tickers(tickers: list[str], min_price: float = 2.0, concurrency: int = 8) -> list[str]:
     """Pré-filtro de liquidez em paralelo: preço > min_price, allowlist sempre passa."""
