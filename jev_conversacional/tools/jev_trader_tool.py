@@ -87,6 +87,13 @@ def call_jev_trader(ticker: str, horizonte_override: str | None = None, observac
         }
         res = _call(ticker=ticker, state_override=state, mock_answers=mock_answers)
 
+    # Deixa explícito ao orquestrador se a análise teve cotação real
+    res["dados_mercado"] = {
+        "disponivel": md.get("disponivel", False),
+        "simulado": md.get("simulado", False),
+        "fonte": md.get("fonte", "indisponivel"),
+    }
+
     # Persiste recomendação no histórico SQLite para tracking de acurácia
     try:
         from ..sqlite_storage import log_recommendation

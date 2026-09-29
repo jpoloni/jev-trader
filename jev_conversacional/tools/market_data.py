@@ -1,31 +1,51 @@
 """get_market_data — FunctionTool ADK para cotação/candles determinísticos (yfinance)."""
 from __future__ import annotations
 from typing import Any
+import logging
+import os
 import time
 
-# cache simples 15 min
+# Silencia o ruído do yfinance (HTTP 404, curl errors) pelo logger dele.
+# Não usar contextlib.redirect_stdout/stderr: troca sys.stdout/stderr do processo inteiro
+# e, com o scanner em threads, pode deixá-los apontando para um buffer descartado.
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+
+# cache simples 15 min (apenas dados reais ou simulados explicitamente; falhas não são cacheadas)
 _CACHE: dict[str, tuple[float, dict]] = {}
 TTL = 15 * 60
 
-def get_market_data(ticker: str) -> dict[str, Any]:
-    """Retorna {preco_atual, variacao_dia_pct, candles_14d, indicadores: {rsi_14, volatilidade_20d_pct}}.
+# Dados simulados só quando pedidos explicitamente (demos/testes offline).
+MOCK_ENV_VAR = "JEV_MARKET_MOCK"
 
-    Sem API key. Usa yfinance; fallback mock se offline.
+
+def _mock_enabled() -> bool:
+    return os.getenv(MOCK_ENV_VAR, "").strip().lower() in ("1", "true", "yes", "sim")
+
+
+def get_market_data(ticker: str) -> dict[str, Any]:
+    """Retorna {preco_atual, variacao_dia_pct, candles_14d, indicadores, fundamentos, disponivel, fonte}.
+
+    Sem API key. Usa yfinance. Se a cotação não puder ser obtida, retorna
+    `disponivel=False` e `preco_atual=None` — nunca um preço inventado.
+    Dados simulados só são usados com JEV_MARKET_MOCK=1 e vêm marcados com `simulado=True`.
     """
     key = ticker.upper().strip()
     now = time.time()
     if key in _CACHE and now - _CACHE[key][0] < TTL:
         return _CACHE[key][1]
 
+    if _mock_enabled():
+        data = _mock_market_data(key)
+        _CACHE[key] = (now, data)
+        return data
+
     try:
         import yfinance as yf
         import pandas as pd
-        import io, contextlib, sys
-        # B3 tickers precisam .SA; suprime prints ruidosos do yfinance (HTTP 404, curl errors)
+        # B3 tickers precisam .SA
         symbol = key if key.endswith(".SA") else f"{key}.SA"
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            ticker_obj = yf.Ticker(symbol)
-            hist = ticker_obj.history(period="3mo", interval="1d", auto_adjust=True)
+        ticker_obj = yf.Ticker(symbol)
+        hist = ticker_obj.history(period="3mo", interval="1d", auto_adjust=True)
 
         if hist.empty or len(hist) < 5:
             raise ValueError(f"histórico vazio ou insuficiente para {symbol}")
@@ -120,8 +140,7 @@ def get_market_data(ticker: str) -> dict[str, Any]:
         nome_empresa = key
         setor_empresa = "Não informado"
         try:
-            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                info = ticker_obj.info or {}
+            info = ticker_obj.info or {}
             nome_empresa = info.get("longName") or info.get("shortName") or key
             setor_empresa = info.get("sector") or "Não informado"
 
@@ -207,36 +226,61 @@ def get_market_data(ticker: str) -> dict[str, Any]:
             "fundamentos": fundamentos,
             "noticias_recentes": noticias_recentes,
             "fonte": "yfinance",
+            "disponivel": True,
+            "simulado": False,
         }
-    except Exception as e:  # fallback mock para offline/testes
-        data = {
+    except Exception as e:
+        # Sem cotação real: sinaliza indisponibilidade em vez de inventar valores.
+        # Não cacheia, para tentar de novo na próxima chamada.
+        return {
             "ticker": key,
-            "nome": f"{key} S.A.",
-            "setor": "Petróleo, Gás e Biocombustíveis" if "PETR" in key else "Setor B3",
-            "preco_atual": 38.42,
-            "variacao_dia_pct": -1.2,
-            "candles_14d": [{"data": "2026-09-18", "fechamento": 38.0 + i * 0.2} for i in range(14)],
-            "indicadores": {
-                "rsi_14": 68.2,
-                "volatilidade_20d_pct": 2.8,
-                "mm_20_vs_50": "mm20 acima mm50 (tendência altista)",
-                "macd": {"macd": 1.12, "signal": 0.95, "hist": 0.17, "desc": "momentum comprador positivo"},
-                "bollinger": {"lower": 36.5, "middle": 38.2, "upper": 39.9, "posicao": "dentro das bandas de Bollinger"},
-                "volume_relativo_20d": 1.15,
-                "atr_14": 0.85,
-                "suporte_20d": 36.5,
-                "resistencia_20d": 40.2,
-            },
-            "fundamentos": {
-                "pl_trailing": 5.2,
-                "pvp": 1.15,
-                "roe_pct": 22.5,
-                "dividend_yield_pct": 8.5,
-                "margem_liquida_pct": 21.0,
-            },
-            "noticias_recentes": [f"Resultados operacionais e dividendos de {key}"],
-            "fonte": f"mock (yfinance indisponível: {e})",
+            "nome": key,
+            "setor": "Não informado",
+            "preco_atual": None,
+            "variacao_dia_pct": None,
+            "candles_14d": [],
+            "indicadores": {},
+            "fundamentos": {},
+            "noticias_recentes": [],
+            "fonte": "indisponivel",
+            "disponivel": False,
+            "simulado": False,
+            "erro": f"cotação indisponível (yfinance): {e}",
         }
 
     _CACHE[key] = (now, data)
     return data
+
+
+def _mock_market_data(key: str) -> dict[str, Any]:
+    """Dados de mercado SIMULADOS (fixos) — só para demos/testes offline via JEV_MARKET_MOCK=1."""
+    return {
+        "ticker": key,
+        "nome": f"{key} S.A.",
+        "setor": "Petróleo, Gás e Biocombustíveis" if "PETR" in key else "Setor B3",
+        "preco_atual": 38.42,
+        "variacao_dia_pct": -1.2,
+        "candles_14d": [{"data": "2026-09-18", "fechamento": 38.0 + i * 0.2} for i in range(14)],
+        "indicadores": {
+            "rsi_14": 68.2,
+            "volatilidade_20d_pct": 2.8,
+            "mm_20_vs_50": "mm20 acima mm50 (tendência altista)",
+            "macd": {"macd": 1.12, "signal": 0.95, "hist": 0.17, "desc": "momentum comprador positivo"},
+            "bollinger": {"lower": 36.5, "middle": 38.2, "upper": 39.9, "posicao": "dentro das bandas de Bollinger"},
+            "volume_relativo_20d": 1.15,
+            "atr_14": 0.85,
+            "suporte_20d": 36.5,
+            "resistencia_20d": 40.2,
+        },
+        "fundamentos": {
+            "pl_trailing": 5.2,
+            "pvp": 1.15,
+            "roe_pct": 22.5,
+            "dividend_yield_pct": 8.5,
+            "margem_liquida_pct": 21.0,
+        },
+        "noticias_recentes": [f"Resultados operacionais e dividendos de {key}"],
+        "fonte": "mock (dados simulados — JEV_MARKET_MOCK=1)",
+        "disponivel": True,
+        "simulado": True,
+    }

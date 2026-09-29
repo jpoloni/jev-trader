@@ -73,12 +73,13 @@ def _prefilter_tickers(tickers: list[str], min_price: float = 2.0, concurrency: 
             return t
         try:
             md = get_market_data(t)
-            preco = md.get("preco_atual")
-            if preco is None or preco < min_price:
-                return None
-            return t
         except Exception:
             return t
+        preco = md.get("preco_atual")
+        if preco is None:
+            # Sem cotação não dá para julgar liquidez: mantém o ticker (a análise sinaliza a falta de dados)
+            return t
+        return t if preco >= min_price else None
 
     with ThreadPoolExecutor(max_workers=concurrency) as ex:
         results = list(ex.map(_check, tickers))
@@ -119,12 +120,8 @@ def scan_one(ticker: str, horizonte: str = "swing", use_mock: bool = False) -> S
         mock = _mock_answers_for_ticker(ticker)
         out = call_jev_trader(ticker=ticker, state_override=state, mock_answers=mock)
     else:
-        # Tenta live; se falhar por falta de chave, cai para mock determinístico
-        try:
-            out = call_jev_trader(ticker=ticker, state_override=state)
-        except RuntimeError:
-            mock = _mock_answers_for_ticker(ticker)
-            out = call_jev_trader(ticker=ticker, state_override=state, mock_answers=mock)
+        # Modo live: falhas propagam — nunca substituir por resposta simulada
+        out = call_jev_trader(ticker=ticker, state_override=state)
 
     return ScanResult(
         ticker=out["ticker"],
@@ -155,8 +152,12 @@ def scan_all(
     use_mock: bool = False,
     prefilter: bool = True,
     show_progress: bool = True,
+    errors: list[str] | None = None,
 ) -> list[ScanResult]:
-    """Varre todos os tickers com ThreadPoolExecutor (limitado por concurrency)."""
+    """Varre todos os tickers com ThreadPoolExecutor (limitado por concurrency).
+
+    Tickers que falham ficam fora do ranking; se `errors` for passado, recebe "TICKER: motivo".
+    """
     if prefilter and not use_mock:
         tickers = _prefilter_tickers(tickers, concurrency=concurrency)
     elif prefilter and use_mock:
@@ -164,7 +165,8 @@ def scan_all(
         pass
 
     results: list[ScanResult] = []
-    errors: list[str] = []
+    if errors is None:
+        errors = []
 
     pbar = None
     if show_progress:
@@ -180,12 +182,7 @@ def scan_all(
                 if "429" in msg or "rate" in msg.lower():
                     time.sleep(1 * (2 ** attempt) + (attempt * 0.3))
                     continue
-                # Outros erros: tenta mock como fallback
-                if not use_mock:
-                    try:
-                        return scan_one(t, horizonte=horizonte, use_mock=True)
-                    except Exception:
-                        pass
+                # Outros erros: ticker fica fora do ranking (sem fallback para mock)
                 errors.append(f"{t}: {e}")
                 return None
         errors.append(f"{t}: retry exhausted")
@@ -265,7 +262,14 @@ def persist(results: list[ScanResult], out_dir: str | pathlib.Path | None = None
 
     return out_paths
 
-def enrich_top(results: list[ScanResult], top: int = 20, horizonte: str = "swing", use_mock: bool = False, show_progress: bool = True) -> list[ScanResult]:
+def enrich_top(
+    results: list[ScanResult],
+    top: int = 20,
+    horizonte: str = "swing",
+    use_mock: bool = False,
+    show_progress: bool = True,
+    errors: list[str] | None = None,
+) -> list[ScanResult]:
     """Fase 2: re-enriquece Top N com google_search (se disponível) + re-call Typesafe."""
     if not results or top <= 0:
         return results
@@ -310,11 +314,8 @@ def enrich_top(results: list[ScanResult], top: int = 20, horizonte: str = "swing
                 mock = _mock_answers_for_ticker(r.ticker)
                 out = call_jev_trader(ticker=r.ticker, state_override=state, mock_answers=mock)
             else:
-                try:
-                    out = call_jev_trader(ticker=r.ticker, state_override=state)
-                except RuntimeError:
-                    mock = _mock_answers_for_ticker(r.ticker)
-                    out = call_jev_trader(ticker=r.ticker, state_override=state, mock_answers=mock)
+                # Modo live: falhas propagam — mantém o resultado da fase 1, nunca um mock
+                out = call_jev_trader(ticker=r.ticker, state_override=state)
 
             new_r = ScanResult(
                 ticker=out["ticker"],
@@ -333,7 +334,9 @@ def enrich_top(results: list[ScanResult], top: int = 20, horizonte: str = "swing
                 timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             )
             enriched.append(new_r)
-        except Exception:
+        except Exception as e:
+            if errors is not None:
+                errors.append(f"{r.ticker} (enrich): {e}")
             enriched.append(r)
         finally:
             if pbar:
@@ -387,6 +390,7 @@ def main():
             f"Universo: {args.universe.upper()} ({len(tickers)} ativos) │ Modo: {mode_desc} │ Horizonte: {args.horizonte} │ Concorrência: {args.concurrency}",
         )
 
+    errors: list[str] = []
     results = scan_all(
         tickers,
         horizonte=args.horizonte,
@@ -394,6 +398,7 @@ def main():
         use_mock=use_mock,
         prefilter=not args.no_prefilter,
         show_progress=not (args.json or args.no_progress),
+        errors=errors,
     )
 
     if args.enrich:
@@ -403,7 +408,21 @@ def main():
             horizonte=args.horizonte,
             use_mock=use_mock,
             show_progress=not (args.json or args.no_progress),
+            errors=errors,
         )
+
+    if errors:
+        import sys
+        print(f"⚠️  {len(errors)} falha(s) na varredura (tickers fora do ranking ou sem enrich):", file=sys.stderr)
+        for err in errors[:20]:
+            print(f"   - {err}", file=sys.stderr)
+        if len(errors) > 20:
+            print(f"   ... e mais {len(errors) - 20}", file=sys.stderr)
+
+    if not results:
+        import sys
+        print("❌ Nenhum ativo analisado com sucesso — ranking anterior mantido.", file=sys.stderr)
+        sys.exit(1)
 
     paths = persist(results, out_dir=args.out, top=args.top)
     elapsed = time.time() - start_time

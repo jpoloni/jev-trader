@@ -19,6 +19,10 @@ cp jev_conversacional/.env.example jev_conversacional/.env
 # edite GOOGLE_API_KEY e TYPESAFE_API_KEY
 ```
 
+> **Dados confiáveis:** se o yfinance falhar, a cotação vem como indisponível (`disponivel=False`) — nunca um preço inventado.
+> Para demos offline, use `JEV_MARKET_MOCK=1` (dados fixos, marcados como `simulado`).
+> Em modo `--live`, falhas da Typesafe deixam o ticker fora do ranking e são listadas no stderr; não há fallback para respostas simuladas.
+
 ## Uso Conversacional (Jev CLI Executivo)
 ```bash
 # Chat interativo no terminal (sem ruído de logs, design limpo com cores e tabelas)

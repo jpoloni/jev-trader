@@ -146,6 +146,8 @@ def render_ticker_card(result: dict[str, Any]) -> str:
     out.append(f"{Ansi.CYAN}│{Ansi.RESET}  {Ansi.BOLD}{Ansi.BRIGHT_WHITE}{info_sub}{Ansi.RESET}")
     if preco_atual is not None:
         out.append(f"{Ansi.CYAN}│{Ansi.RESET}  Cotação: {format_currency(preco_atual)} ({format_pct(var_dia)})")
+    else:
+        out.append(f"{Ansi.CYAN}│{Ansi.RESET}  {Ansi.BRIGHT_YELLOW}⚠️  Cotação indisponível — análise sem dados de mercado reais{Ansi.RESET}")
     
     out.append(line_div)
 

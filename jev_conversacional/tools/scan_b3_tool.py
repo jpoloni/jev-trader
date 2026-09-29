@@ -76,8 +76,11 @@ def scan_b3(
             cmd.extend(["--enrich-top", str(top)])
             
         try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(DATA_DIR.parent))
+            proc = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(DATA_DIR.parent))
             aviso = "Ranking atualizado em tempo real com sucesso!"
+            falhas = [l.strip() for l in (proc.stderr or "").splitlines() if l.strip()]
+            if falhas:
+                aviso += " Atenção — " + " ".join(falhas[:6])
         except subprocess.CalledProcessError as e:
             # Em caso de falha no update, avisar e cair no fallback de ler o cache antigo
             aviso = f"Tentativa de atualizar o scanner falhou, exibindo versão em cache. Detalhes do erro: {e.stderr.strip() or e.stdout.strip() or 'Exit code ' + str(e.returncode)}"
@@ -111,6 +114,13 @@ def scan_b3(
         if not aviso:
             aviso = "Ranking lido do cache com sucesso."
 
+        simulados = [r.get("ticker") for r in top_data if r.get("model") == "jev-mock"]
+        if simulados:
+            aviso += (
+                f" ATENÇÃO: {len(simulados)} de {len(top_data)} resultados são SIMULADOS (modo mock, sem TYPESAFE_API_KEY)"
+                " — não representam análise real; informe isso ao usuário."
+            )
+
         return {
             "ranking": [
                 {
@@ -122,12 +132,15 @@ def scan_b3(
                     "probabilidades": r.get("probabilidades"),
                     "motivo_gate": r.get("motivo_gate"),
                     "justificativa": r.get("justificativa"),
+                    "model": r.get("model"),
+                    "simulado": r.get("model") == "jev-mock",
                 }
                 for i, r in enumerate(top_data)
             ],
             "total_varridos": len(data),
             "gerado_em": gerado_em,
             "cache_fresco": True,
+            "simulado": bool(simulados),
             "idade_min": 0 if needs_update else int((time.time() - RANKING_LATEST.stat().st_mtime) // 60),
             "disclaimer": "Conteúdo educacional. Não constitui recomendação personalizada (Res. CVM 20). Decisão final é do investidor.",
             "aviso": aviso,
