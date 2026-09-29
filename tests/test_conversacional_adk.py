@@ -35,10 +35,13 @@ def test_before_tool_callback_valida_ticker():
     ret3 = before_tool_callback(FakeTool(), {"ticker": "VALE3.SA"}, None)
     assert ret3 is None
 
-def test_market_data_mock():
-    from jev_conversacional.tools.market_data import get_market_data
-    # yfinance real ou mock — ambos retornam estrutura esperada
-    data = get_market_data("PETR4")
+def test_market_data_mock(monkeypatch):
+    import jev_conversacional.tools.market_data as md_mod
+    # mock explícito (offline, determinístico); fallback silencioso não existe mais
+    monkeypatch.setattr(md_mod, "_CACHE", {})
+    monkeypatch.setenv("JEV_MARKET_MOCK", "1")
+    data = md_mod.get_market_data("PETR4")
+    assert data["simulado"] is True
     assert "preco_atual" in data
     assert "candles_14d" in data
     assert "indicadores" in data

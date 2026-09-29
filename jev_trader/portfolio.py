@@ -165,6 +165,38 @@ def sell_asset(
     }
 
 
+def _cotacao(ticker: str, preco_medio: float) -> dict[str, Any]:
+    """Cotação atual do ativo. Sem cotação real, usa o preço médio como valor de referência
+    e marca `disponivel=False` — nunca um preço inventado."""
+    try:
+        from jev_conversacional.tools.market_data import get_market_data
+        md = get_market_data(ticker)
+    except Exception:
+        md = {}
+    preco = md.get("preco_atual")
+    disponivel = preco is not None and md.get("disponivel", True) is not False
+    return {
+        "preco": float(preco) if disponivel else float(preco_medio),
+        "variacao_dia_pct": float(md.get("variacao_dia_pct") or 0.0) if disponivel else None,
+        "setor": str(md.get("setor") or "Outros"),
+        "nome": str(md.get("nome") or ticker),
+        "disponivel": disponivel,
+        "simulado": bool(md.get("simulado", False)),
+    }
+
+
+def _aviso_cotacoes(indisponiveis: list[str], simuladas: list[str]) -> str | None:
+    partes = []
+    if indisponiveis:
+        partes.append(
+            "Cotação indisponível para " + ", ".join(indisponiveis)
+            + " — valorizado(s) pelo preço médio; P&L desses ativos não calculado."
+        )
+    if simuladas:
+        partes.append("Cotação SIMULADA (JEV_MARKET_MOCK) para " + ", ".join(simuladas) + " — não use para decisões.")
+    return " ".join(partes) or None
+
+
 def get_position(ticker: str) -> dict[str, Any] | None:
     """Retorna detalhes de uma posição com cotação atual e % da carteira."""
     ticker = ticker.upper().strip()
@@ -173,21 +205,17 @@ def get_position(ticker: str) -> dict[str, Any] | None:
     if not pos:
         return None
 
-    try:
-        from jev_conversacional.tools.market_data import get_market_data
-        md = get_market_data(ticker)
-        preco_atual = float(md.get("preco_atual") or pos["preco_medio"])
-        var_dia = float(md.get("variacao_dia_pct") or 0.0)
-    except Exception:
-        preco_atual = float(pos["preco_medio"])
-        var_dia = 0.0
-
     qtd = int(pos["quantidade"])
     pm = float(pos["preco_medio"])
+    cot = _cotacao(ticker, pm)
+    preco_atual = cot["preco"]
     valor_investido = round(pm * qtd, 2)
     valor_atual = round(preco_atual * qtd, 2)
-    pl_reais = round(valor_atual - valor_investido, 2)
-    pl_pct = round(((preco_atual - pm) / pm * 100), 2) if pm > 0 else 0.0
+    if cot["disponivel"]:
+        pl_reais = round(valor_atual - valor_investido, 2)
+        pl_pct = round(((preco_atual - pm) / pm * 100), 2) if pm > 0 else 0.0
+    else:
+        pl_reais = pl_pct = None
 
     # Calcula patrimônio total da carteira para alocação percentual
     total_patrimonio = 0.0
@@ -195,13 +223,7 @@ def get_position(ticker: str) -> dict[str, Any] | None:
         if t_code == ticker:
             total_patrimonio += valor_atual
         else:
-            try:
-                from jev_conversacional.tools.market_data import get_market_data
-                other_md = get_market_data(t_code)
-                p_cur = float(other_md.get("preco_atual") or p_data["preco_medio"])
-            except Exception:
-                p_cur = float(p_data["preco_medio"])
-            total_patrimonio += p_cur * int(p_data["quantidade"])
+            total_patrimonio += _cotacao(t_code, float(p_data["preco_medio"]))["preco"] * int(p_data["quantidade"])
 
     pct_carteira = round((valor_atual / total_patrimonio * 100), 1) if total_patrimonio > 0 else 0.0
 
@@ -209,13 +231,16 @@ def get_position(ticker: str) -> dict[str, Any] | None:
         "ticker": ticker,
         "quantidade": qtd,
         "preco_medio": pm,
-        "preco_atual": round(preco_atual, 2),
-        "variacao_dia_pct": round(var_dia, 2),
+        "preco_atual": round(preco_atual, 2) if cot["disponivel"] else None,
+        "variacao_dia_pct": cot["variacao_dia_pct"],
+        "cotacao_disponivel": cot["disponivel"],
+        "cotacao_simulada": cot["simulado"],
         "valor_investido": valor_investido,
         "valor_atual": valor_atual,
         "pl_reais": pl_reais,
         "pl_pct": pl_pct,
         "pct_carteira": pct_carteira,
+        "aviso": _aviso_cotacoes([] if cot["disponivel"] else [ticker], [ticker] if cot["simulado"] else []),
         "data_inicio": pos.get("data_inicio"),
         "notas": pos.get("notas", ""),
     }
@@ -240,26 +265,28 @@ def get_portfolio_summary() -> dict[str, Any]:
     patrimonio_total = 0.0
     setores_map: dict[str, float] = {}
 
-    for ticker, pos in portfolio.items():
-        try:
-            from jev_conversacional.tools.market_data import get_market_data
-            md = get_market_data(ticker)
-            preco_atual = float(md.get("preco_atual") or pos["preco_medio"])
-            var_dia = float(md.get("variacao_dia_pct") or 0.0)
-            setor = str(md.get("setor") or "Outros")
-            nome = str(md.get("nome") or ticker)
-        except Exception:
-            preco_atual = float(pos["preco_medio"])
-            var_dia = 0.0
-            setor = "Outros"
-            nome = ticker
+    indisponiveis: list[str] = []
+    simuladas: list[str] = []
 
+    for ticker, pos in portfolio.items():
         qtd = int(pos["quantidade"])
         pm = float(pos["preco_medio"])
+        cot = _cotacao(ticker, pm)
+        preco_atual = cot["preco"]
+        setor = cot["setor"]
+        nome = cot["nome"]
+        if not cot["disponivel"]:
+            indisponiveis.append(ticker)
+        if cot["simulado"]:
+            simuladas.append(ticker)
+
         v_investido = round(pm * qtd, 2)
         v_atual = round(preco_atual * qtd, 2)
-        pl_r = round(v_atual - v_investido, 2)
-        pl_p = round(((preco_atual - pm) / pm * 100), 2) if pm > 0 else 0.0
+        if cot["disponivel"]:
+            pl_r = round(v_atual - v_investido, 2)
+            pl_p = round(((preco_atual - pm) / pm * 100), 2) if pm > 0 else 0.0
+        else:
+            pl_r = pl_p = None
 
         total_investido += v_investido
         patrimonio_total += v_atual
@@ -271,8 +298,10 @@ def get_portfolio_summary() -> dict[str, Any]:
             "setor": setor,
             "quantidade": qtd,
             "preco_medio": pm,
-            "preco_atual": round(preco_atual, 2),
-            "variacao_dia_pct": round(var_dia, 2),
+            "preco_atual": round(preco_atual, 2) if cot["disponivel"] else None,
+            "variacao_dia_pct": cot["variacao_dia_pct"],
+            "cotacao_disponivel": cot["disponivel"],
+            "cotacao_simulada": cot["simulado"],
             "valor_investido": v_investido,
             "valor_atual": v_atual,
             "pl_reais": pl_r,
@@ -303,6 +332,9 @@ def get_portfolio_summary() -> dict[str, Any]:
         "pl_total_pct": pl_total_pct,
         "exposicao_setorial": exposicao_setorial,
         "total_ativos": len(itens),
+        "cotacoes_indisponiveis": indisponiveis,
+        "cotacoes_simuladas": simuladas,
+        "aviso": _aviso_cotacoes(indisponiveis, simuladas),
     }
 
 

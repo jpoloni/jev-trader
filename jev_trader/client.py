@@ -168,8 +168,8 @@ if __name__ == "__main__":
 
     mock_payload = None
     if use_mock:
-        from .scanner import _mock_answers_for_ticker
-        mock_payload = _mock_answers_for_ticker(ticker)
+        from .mock_answers import mock_answers_for_ticker
+        mock_payload = mock_answers_for_ticker(ticker)
 
     res = call_jev_trader(ticker=ticker, state_override=state, mock_answers=mock_payload)
 

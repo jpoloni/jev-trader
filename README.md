@@ -19,6 +19,10 @@ cp jev_conversacional/.env.example jev_conversacional/.env
 # edite GOOGLE_API_KEY e TYPESAFE_API_KEY
 ```
 
+> **Dados confiáveis:** se o yfinance falhar, a cotação vem como indisponível (`disponivel=False`) — nunca um preço inventado.
+> Para demos offline, use `JEV_MARKET_MOCK=1` (dados fixos, marcados como `simulado`).
+> Em modo `--live`, falhas da Typesafe deixam o ticker fora do ranking e são listadas no stderr; não há fallback para respostas simuladas.
+
 ## Uso Conversacional (Jev CLI Executivo)
 ```bash
 # Chat interativo no terminal (sem ruído de logs, design limpo com cores e tabelas)
@@ -57,12 +61,13 @@ cp jev_conversacional/.env.example jev_conversacional/.env
 
 ## 🗺️ Roadmap & Próximos Passos
 O roadmap estratégico com cronograma de sprints e detalhamento arquitetural das próximas fases está documentado em:
-* [docs/roadmap.md](file:///Users/jpoloni/dev/jev/docs/roadmap.md)
+* [docs/roadmap.md](docs/roadmap.md)
   * **v0.4 (Q4 2026):** Motor de Alertas & Monitoramento Contínuo (`data/alerts.json` + Daemon CLI).
   * **v1.0 (Q1 2027):** Dashboard Web Interativo (Vite + React + TradingView Charts) e Backtesting Engine.
   * **v1.1 (Q2 2027):** Suporte Multi-Mercado (NYSE/NASDAQ) e Arquitetura Multi-Agent ADK.
 
 ## 📋 Documentação & Handoffs
-* [Handoff — 26/09/2026](file:///Users/jpoloni/dev/jev/docs/handoff-2026-09-26.md): Entrega das Fases 1 e 2 (Fundamentos, News Feed, Indicadores, Carteira, SQLite e Comparador).
-* [Handoff — 20/09/2026](file:///Users/jpoloni/dev/jev/docs/handoff-2026-09-20.md): Versão inicial de integração ADK + Typesafe e Scanner B3.
+* [Handoff — 29/09/2026](docs/handoff-2026-09-29.md): Vinculação ao remote e verificação da suíte.
+* [Handoff — 26/09/2026](docs/handoff-2026-09-26.md): Entrega das Fases 1 e 2 (Fundamentos, News Feed, Indicadores, Carteira, SQLite e Comparador).
+* [Handoff — 20/09/2026](docs/handoff-2026-09-20.md): Versão inicial de integração ADK + Typesafe e Scanner B3.
 

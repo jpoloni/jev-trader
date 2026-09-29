@@ -8,12 +8,27 @@ DEFAULT_WEIGHTS = {"tendencia": 0.30, "fundamentos": 0.25, "sentimento": 0.15, "
 DEFAULT_THRESHOLDS = {"compra": 0.62, "venda": 0.38}
 DEFAULT_GATES = {"risco_excessivo": 0.70, "evento_binario_iminente": 0.65, "informacao_insuficiente": 0.68, "confidence_min": 0.60}
 
+def _load_weights() -> tuple[dict, dict, dict]:
+    """Perfil swing versionado em weights.yaml (fonte da verdade); defaults só se o arquivo faltar."""
+    p = pathlib.Path(__file__).with_name("weights.yaml")
+    if p.exists():
+        data = yaml.safe_load(p.read_text()) or {}
+        return (
+            {**DEFAULT_WEIGHTS, **(data.get("weights") or {})},
+            {**DEFAULT_THRESHOLDS, **(data.get("thresholds") or {})},
+            {**DEFAULT_GATES, **(data.get("gates") or {})},
+        )
+    return DEFAULT_WEIGHTS, DEFAULT_THRESHOLDS, DEFAULT_GATES
+
+# Swing (default global) vem do weights.yaml
+WEIGHTS, THRESHOLDS, GATES = _load_weights()
+
 # Perfis por horizonte — ajustam pesos e gates dinamicamente
 HORIZON_PROFILES: dict[str, dict[str, Any]] = {
     "swing": {
-        "weights": DEFAULT_WEIGHTS,
-        "thresholds": DEFAULT_THRESHOLDS,
-        "gates": DEFAULT_GATES,
+        "weights": WEIGHTS,
+        "thresholds": THRESHOLDS,
+        "gates": GATES,
     },
     "daytrade": {
         "weights": {"tendencia": 0.35, "fundamentos": 0.10, "sentimento": 0.10, "timing_inv": 0.30, "risco_inv": 0.15},
@@ -27,24 +42,22 @@ HORIZON_PROFILES: dict[str, dict[str, Any]] = {
     },
 }
 
-def _load_weights() -> tuple[dict, dict, dict]:
-    p = pathlib.Path(__file__).with_name("weights.yaml")
-    if p.exists():
-        data = yaml.safe_load(p.read_text())
-        return data.get("weights", DEFAULT_WEIGHTS), data.get("thresholds", DEFAULT_THRESHOLDS), data.get("gates", DEFAULT_GATES)
-    return DEFAULT_WEIGHTS, DEFAULT_THRESHOLDS, DEFAULT_GATES
+def normalize_horizonte(horizonte: str | None) -> str:
+    """Mapeia texto livre para um perfil: 'swing (2-8 semanas)' -> swing, 'Day Trade' -> daytrade.
 
-# Carrega swing como default global (retrocompatibilidade)
-WEIGHTS, THRESHOLDS, GATES = _load_weights()
+    Desconhecido ou vazio -> swing.
+    """
+    h = "".join(ch for ch in (horizonte or "").lower() if ch.isalnum())
+    if h.startswith("day") or h.startswith("intraday"):
+        return "daytrade"
+    if h.startswith("posic") or h.startswith("position") or h.startswith("longo"):
+        return "posicional"
+    return "swing"
 
 def _get_profile(horizonte: str | None) -> tuple[dict, dict, dict]:
     """Retorna (weights, thresholds, gates) para o horizonte dado."""
-    h = (horizonte or "swing").strip().lower()
-    if h in HORIZON_PROFILES:
-        p = HORIZON_PROFILES[h]
-        return p["weights"], p["thresholds"], p["gates"]
-    # fallback: swing from yaml/default
-    return WEIGHTS, THRESHOLDS, GATES
+    p = HORIZON_PROFILES[normalize_horizonte(horizonte)]
+    return p["weights"], p["thresholds"], p["gates"]
 
 def _norm(score: float, levels: int) -> float:
     return max(0.0, min(1.0, score / (levels - 1)))
@@ -100,7 +113,8 @@ def compose(answers: dict[str, Any], ticker: str = "", horizonte: str | None = N
     choice = _get(rec, "choice", "hold")
     if isinstance(choice, str):
         choice = choice.lower()
-    confidence = float(_get(rec, "confidence", 0.5) or 0.5)
+    raw_conf = _get(rec, "confidence")
+    confidence = 0.5 if raw_conf is None else float(raw_conf)  # 0.0 é valor válido, não "ausente"
     probabilities = _get(rec, "probabilities", {"compra": 0.33, "venda": 0.33, "hold": 0.34})
 
     # Normalização
@@ -146,6 +160,7 @@ def compose(answers: dict[str, Any], ticker: str = "", horizonte: str | None = N
 
     return {
         "ticker": ticker,
+        "horizonte": normalize_horizonte(horizonte),
         "recomendacao": final,
         "recomendacao_raw": raw,
         "weighted": round(weighted, 3),
@@ -163,6 +178,7 @@ def compose(answers: dict[str, Any], ticker: str = "", horizonte: str | None = N
             "informacao_insuficiente": info_insuf,
             "evento_binario_iminente": evento_bin,
         },
+        "limites_gates": dict(g),
         "choice_original": choice,
         "justificativa": justificativa,
         "motivo_gate": motivo_gate,

@@ -182,3 +182,52 @@ def test_divergence_gate_triggers_hold():
     assert out["recomendacao_raw"] == "compra"
     assert out["recomendacao"] == "hold"
     assert "divergência" in out["motivo_gate"]
+
+
+def _answers_base(confidence):
+    return {
+        "tendencia_tecnica": {"score": 2.0},
+        "qualidade_fundamentalista": {"score": 2.0},
+        "risco_volatilidade": {"score": 1.5},
+        "sentimento_noticia": {"score": 2.0},
+        "timing_momentum": {"score": 2.0},
+        "risco_excessivo": {"noul": 0.1},
+        "informacao_insuficiente": {"noul": 0.1},
+        "evento_binario_iminente": {"noul": 0.1},
+        "recomendacao": {"choice": "hold", "confidence": confidence},
+    }
+
+
+def test_confidence_zero_nao_vira_meio():
+    """confidence=0.0 é valor válido e deve acionar o gate de confiança mínima."""
+    out = compose(_answers_base(0.0), ticker="PETR4", horizonte="swing")
+    assert out["confidence"] == 0.0
+    assert "confidence" in out["motivo_gate"]
+
+
+def test_normaliza_horizonte_texto_livre():
+    from jev_trader.composer import normalize_horizonte
+    assert normalize_horizonte("swing (2-8 semanas)") == "swing"
+    assert normalize_horizonte("Swing") == "swing"
+    assert normalize_horizonte("Day Trade") == "daytrade"
+    assert normalize_horizonte("daytrade") == "daytrade"
+    assert normalize_horizonte("Posicional") == "posicional"
+    assert normalize_horizonte(None) == "swing"
+    assert normalize_horizonte("qualquer coisa") == "swing"
+
+
+def test_swing_usa_weights_yaml():
+    """O perfil swing deve vir do weights.yaml, com ou sem descrição no horizonte."""
+    import pathlib
+    import yaml
+    from jev_trader.composer import _get_profile
+    data = yaml.safe_load((pathlib.Path(__file__).parent.parent / "jev_trader" / "weights.yaml").read_text())
+    for h in ("swing", "swing (2-8 semanas)", None):
+        w, t, g = _get_profile(h)
+        assert w == data["weights"] and t == data["thresholds"] and g == data["gates"]
+
+
+def test_saida_expoe_limites_do_perfil():
+    out = compose(_answers_base(0.7), ticker="ITUB4", horizonte="daytrade")
+    assert out["horizonte"] == "daytrade"
+    assert out["limites_gates"] == HORIZON_PROFILES["daytrade"]["gates"]
